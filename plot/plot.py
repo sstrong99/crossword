@@ -17,23 +17,25 @@ import argparse
 import datetime
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import pandas as pd
-import seaborn as sns
 
-# Rolling average filter interval for plot
 FILTER_INTERVAL_WEEKS = 26
 DEFAULT_PLOT_STYLE = "ggplot"
 
 # Mapping of days as outputted in Rust crate to how each day should be formatted in the plot legend
 DAYS = {
-    "Mon": "Monday",
-    "Tue": "Tuesday",
-    "Wed": "Wednesday",
-    "Thu": "Thursday",
-    "Fri": "Friday",
-    "Sat": "Saturday",
-    "Sun": "Sunday",
+    ("Mon",): "Monday",
+    ("Tue",): "Tuesday",
+    ("Wed",): "Wednesday",
+    ("Thu",): "Thursday",
+    ("Fri",): "Friday",
+    ("Sat",): "Saturday",
+    ("Sun",): "Sunday",
+}
+
+MINI_DAYS = {
+    ("Mon", "Tue", "Wed", "Thu", "Fri", "Sun"): "Non-Saturday",
+    ("Sat",): "Saturday",
 }
 
 A = argparse.ArgumentParser(
@@ -67,6 +69,13 @@ A.add_argument(
     type=str,
     choices=plt.style.available,
     help="Name of the plot style to use; must be in plt.style.available",
+)
+A.add_argument(
+    "-m",
+    "--mini",
+    action="store_true",
+    default=False,
+    help="Only separate Saturdays, not all days of the week (for mini puzzles)",
 )
 
 
@@ -102,21 +111,22 @@ def parse_data(csv_path):
     return df
 
 
-def save_plot(df, out_path, ymax):
+def save_plot(df, out_path, ymax, mini=False):
     fig = plt.figure(figsize=(10, 7), dpi=200)
     today = datetime.date.today().isoformat()
     latest_solve = df["date"].sort_values().iat[-1].date().isoformat()
     plt.title(
-        f"NYT crossword solve time ({FILTER_INTERVAL_WEEKS}-week rolling average) as of {today}"
+        f"NYT {'mini' if mini else 'crossword'} solve time ({FILTER_INTERVAL_WEEKS}-week rolling average) as of {today}"
     )
     ax = fig.gca()
-    for day_data, day_legend in DAYS.items():
+    for day_data, day_legend in (MINI_DAYS if mini else DAYS).items():
         rolling_avg = (
-            df[df["weekday"] == day_data]["solve_time_secs"]
+            df[df["weekday"].isin(day_data)]["solve_time_secs"]
             .rolling(f"{FILTER_INTERVAL_WEEKS * 7}D")
             .mean()
         )
-        (rolling_avg / 60.0).plot(
+
+        (rolling_avg / (1.0 if mini else 60.0)).plot(
             ax=ax,
             label=day_legend,
             linewidth=2,
@@ -124,10 +134,17 @@ def save_plot(df, out_path, ymax):
     plt.legend()
 
     ax.set_xlabel(f"Solve Date (latest: {latest_solve})")
-    ax.set_ylabel("Minutes")
+    ax.set_ylabel("Seconds" if mini else "Minutes")
     minor_yticks = np.arange(0, ymax + 1, 5)
+    
     ax.set_ylim(0, ymax)
     ax.set_yticks(minor_yticks, minor=True)
+
+    # plot multiples of 30 for mini puzzles
+    if mini:
+        major_yticks = np.arange(0, ymax + 1, 30)
+        ax.set_yticks(major_yticks, minor=False)
+
     # Show y-axis labels on the right of the plot as well 
     ax_right = ax.secondary_yaxis('right')
     ax_right.set_yticks(ax.get_yticks())
@@ -139,24 +156,24 @@ def save_plot(df, out_path, ymax):
     plt.savefig(out_path)
 
 
-def generate(in_file, out_file, ceiling=None, style=DEFAULT_PLOT_STYLE):
+def generate(in_file, out_file, ceiling=None, style=DEFAULT_PLOT_STYLE, mini=False):
     df = parse_data(in_file)
 
     if ceiling is None:
         # Pick an appropriate y-axis, balancing being robust to outliers vs. showing all data
-        ymax = df["solve_time_secs"].quantile(0.99) / 60
+        ymax = df["solve_time_secs"].quantile(0.99) / (1.0 if mini else 60.0)
     else:
         ymax = ceiling
 
     if style is not None:
         plt.style.use(style)
-    save_plot(df, out_file, ymax)
+    save_plot(df, out_file, ymax, mini=mini)
 
 
 def main():
     args = A.parse_args()
 
-    generate(args.in_file, args.out_file, args.ceiling, args.style)
+    generate(args.in_file, args.out_file, args.ceiling, args.style, args.mini)
 
 
 if __name__ == "__main__":
