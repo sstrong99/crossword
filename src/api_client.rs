@@ -112,12 +112,13 @@ pub struct RateLimitedClient {
     client: reqwest::Client,
     governor: Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>,
     n_requests: Arc<AtomicU32>,
+    mini: bool,
 }
 
 impl RateLimitedClient {
     const API_BASE: &'static str = "https://www.nytimes.com/svc/crosswords";
     const PUZZLE_INFO_ENDPOINT: &'static str =
-        "/v3/36569100/puzzles.json?publish_type=daily&date_start={start_date}&date_end={end_date}";
+        "/v3/36569100/puzzles.json?publish_type={daily_or_mini}&date_start={start_date}&date_end={end_date}";
     const PUZZLE_STATS_ENDPOINT: &'static str = "/v6/game/{id}.json";
 
     /// Construct a new `RateLimitedClient`
@@ -126,7 +127,7 @@ impl RateLimitedClient {
     ///
     /// * `nyt_s` - NYT subscription token extracted from web browser
     /// * `quota` - Outgoing request quota in requests per second
-    pub fn new(nyt_token: SubscriptionToken, quota: NonZeroU32) -> Self {
+    pub fn new(nyt_token: SubscriptionToken, quota: NonZeroU32, mini: bool) -> Self {
         let mut headers = HeaderMap::new();
         headers.insert(header::ACCEPT, "application/json".parse().unwrap());
         headers.insert(header::DNT, "1".parse().unwrap());
@@ -151,6 +152,7 @@ impl RateLimitedClient {
             client,
             governor,
             n_requests,
+            mini,
         }
     }
 
@@ -183,7 +185,8 @@ pub async fn get_puzzle_ids(
 ) -> Result<HashMap<NaiveDate, u32>> {
     let endpoint = RateLimitedClient::PUZZLE_INFO_ENDPOINT
         .replace("{start_date}", &start.format("%Y-%m-%d").to_string())
-        .replace("{end_date}", &end.format("%Y-%m-%d").to_string());
+        .replace("{end_date}", &end.format("%Y-%m-%d").to_string())
+        .replace("{daily_or_mini}", if client.mini { "mini" } else { "daily" });
     let url = RateLimitedClient::api_url(&endpoint);
     let response: PuzzleInfoResponse = client.get(&url).await?.json().await?;
     Ok(response

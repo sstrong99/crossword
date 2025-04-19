@@ -33,6 +33,9 @@ struct Opt {
     #[arg(short, long, env = "NYT_XWORD_START")]
     start_date: NaiveDate,
 
+    #[arg(short, long)]
+    mini: bool,
+
     /// Rate-limit (per second) for outgoing requests
     #[arg(
         short = 'q',
@@ -94,7 +97,8 @@ async fn main() -> Result<()> {
     );
 
     let msg = format!(
-        "Fetching NYT crossword stats since {}",
+        "Fetching NYT {} crossword stats since {}",
+        if opt.mini { "mini" } else { "daily" },
         &opt.start_date.to_string()
     );
     progress.println(msg);
@@ -109,7 +113,7 @@ async fn main() -> Result<()> {
     } else {
         anyhow::bail!("No NYT subscription token provided");
     };
-    let client = RateLimitedClient::new(token, opt.request_quota);
+    let client = RateLimitedClient::new(token, opt.request_quota, opt.mini);
 
     let ids_task = tokio::spawn(crossword::search::fetch_ids_and_stats(
         client.clone(),

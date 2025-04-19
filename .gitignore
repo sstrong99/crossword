@@ -7,3 +7,8 @@
 *.pyd
 __pycache__
 .pytest_cache
+
+
+.venv
+*.csv
+*.png
