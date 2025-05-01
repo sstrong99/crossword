@@ -169,6 +169,15 @@ def generate(in_file, out_file, ceiling=None, style=DEFAULT_PLOT_STYLE, mini=Fal
         plt.style.use(style)
     save_plot(df, out_file, ymax, mini=mini)
 
+    if mini:
+        min_time = min(df["solve_time_secs"])
+        print(f"Your fastest time is {int(min_time)}s")
+        min_time_achieved = df[df["solve_time_secs"] == 13.0].index.to_list()
+
+        print(f"This minimum was achieved {len(min_time_achieved)} times on the following dates:")
+        for date in min_time_achieved:
+            print(f"  {date.date().isoformat()}")
+
 
 def main():
     args = A.parse_args()
